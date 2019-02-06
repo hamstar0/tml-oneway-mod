@@ -15,11 +15,12 @@ namespace OneWay {
 		private Vector2 PrevPos1 = default( Vector2 );
 		private Vector2 PrevPos2 = default( Vector2 );
 
-
-
+		
 		////////////////
 
 		public override bool CloneNewInstances => false;
+
+
 
 		////////////////
 
