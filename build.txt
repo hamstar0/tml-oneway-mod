@@ -1,0 +1,5 @@
+author = hamstar
+version = 1.0.0
+displayName = One Way
+buildIgnore = *.csproj, *.user, *.bat, obj\*, bin\*, .vs\*, .git\*
+languageVersion = 6
