@@ -3,3 +3,4 @@ version = 1.0.0
 displayName = One Way
 buildIgnore = *.csproj, *.user, *.bat, obj\*, bin\*, .vs\*, .git\*
 languageVersion = 6
+homepage = https://forums.terraria.org/index.php?threads/one-way-no-backtracking-simple-mod.76920/
