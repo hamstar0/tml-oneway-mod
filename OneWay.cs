@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using ReLogic.Graphics;
 using System;
+using System.Collections.Generic;
 using Terraria;
 using Terraria.ModLoader;
 
@@ -15,13 +16,24 @@ namespace OneWay {
 
 		public override void PostDrawInterface( SpriteBatch sb ) {
 			var myplayer = Main.LocalPlayer.GetModPlayer<OneWayPlayer>();
+			float colorShift = 1f;
 
-			var rect = new Rectangle( (int)myplayer.TrackingPosition.X, (int)myplayer.TrackingPosition.Y, 4, 4 );
-			rect.X -= (int)Main.screenPosition.X + 2;
-			rect.Y -= (int)Main.screenPosition.Y + 2;
+			lock( OneWayPlayer.MyLock ) {
+				int i = 0;
+				foreach( Vector2 pos in myplayer.TrackingPositions.Values ) {
+					var rect = new Rectangle( (int)pos.X, (int)pos.Y, 8, 8 );
+					rect.X -= (int)Main.screenPosition.X + 4;
+					rect.Y -= (int)Main.screenPosition.Y + 4;
 
-			sb.Draw( Main.magicPixel, rect, Color.Red );
-			sb.DrawString( Main.fontMouseText, "Backtracking? "+myplayer.IsBacktracking+", Rect: "+rect.ToString(), new Vector2(16, 368), Color.White );
+					Color color = Color.Lerp( Color.Black, Color.Red, colorShift );
+
+					sb.Draw( Main.magicPixel, rect, color );
+
+					colorShift = 1f - ( i++ / myplayer.TrackingPositions.Count );
+				}
+
+				sb.DrawString( Main.fontMouseText, "Backtracking? " + myplayer.IsBacktracking + ", tracks: " + myplayer.TrackingPositions.Count, new Vector2( 16, 420 ), Color.White );
+			}
 		}
 	}
 
@@ -31,6 +43,8 @@ namespace OneWay {
 	class OneWayPlayer : ModPlayer {
 		public const int OffscreenMargin = 6 * 16;
 		public const float FollowDistance = 192f;
+
+		internal readonly static object MyLock = new object();
 
 
 
@@ -81,8 +95,11 @@ namespace OneWay {
 
 		////////////////
 
-		internal Vector2 TrackingPosition = default( Vector2 );
+		internal IDictionary<string, Vector2> TrackingPositions = new Dictionary<string, Vector2>();
+		private Vector2 CurrTrackingPos = default( Vector2 );
+
 		internal bool IsBacktracking = false;
+		private Vector2 LastTrackedScreenPos = default( Vector2 );
 
 
 		////////////////
@@ -96,27 +113,45 @@ namespace OneWay {
 		public override void ModifyScreenPosition() {
 			var plrPos = this.player.Center;
 
-			if( this.TrackingPosition == default(Vector2) ) {
-				this.TrackingPosition = plrPos;
-				return;
-			}
+			lock( OneWayPlayer.MyLock ) {
+				if( this.TrackingPositions.Count == 0 ) {
+					this.TrackingPositions[(int)( plrPos.X / 16f ) + "," + (int)( plrPos.Y / 16f )] = plrPos;
+					this.LastTrackedScreenPos = Main.screenPosition;
+					return;
+				}
 
-			float dist = Vector2.Distance( this.TrackingPosition, plrPos );
-			float backtrackAmt = OneWayPlayer.FollowDistance - dist;
-			this.IsBacktracking = backtrackAmt > 0;
+				float shortestDist = Int32.MaxValue;
+				foreach( Vector2 pos in this.TrackingPositions.Values ) {
+					float dist = Vector2.Distance( pos, plrPos );
+					if( dist < shortestDist ) {
+						shortestDist = dist;
+					}
+				}
 
-			if( backtrackAmt < 0 || backtrackAmt > 8f ) {
-				this.TrackingPosition = OneWayPlayer.GetTrackingPosition( this.TrackingPosition, this.player.Center );
-			}
+				float backtrackAmt = OneWayPlayer.FollowDistance - shortestDist;
+				this.IsBacktracking = backtrackAmt > 0;
 
-			if( this.IsBacktracking ) {
-				var scrRect = new Rectangle( (int)scrPos.X, (int)scrPos.Y, Main.screenWidth, Main.screenHeight );
-				Vector2 offset;
+				this.CurrTrackingPos = OneWayPlayer.GetTrackingPosition( this.CurrTrackingPos, this.player.Center );
+				string posStr = (int)( this.CurrTrackingPos.X / 16f ) + "," + (int)( this.CurrTrackingPos.Y / 16f );
 
-				if( OneWayPlayer.IsOffscreen(this.player.getRect(), scrRect, out offset) ) {
-					Main.screenPosition = scrPos + offset;
+				if( backtrackAmt < 0 || backtrackAmt > 8f ) {
+					this.TrackingPositions[ posStr ] = this.CurrTrackingPos;
+				}
+
+				if( this.IsBacktracking ) {
+					var scrPos = this.LastTrackedScreenPos;
+					var scrRect = new Rectangle( (int)scrPos.X, (int)scrPos.Y, Main.screenWidth, Main.screenHeight );
+					Vector2 offset;
+
+					if( OneWayPlayer.IsOffscreen( this.player.getRect(), scrRect, out offset ) ) {
+						Main.screenPosition = scrPos + offset;
+					} else {
+						Main.screenPosition = scrPos;
+					}
 				} else {
-					Main.screenPosition = scrPos;
+					this.TrackingPositions.Clear();
+					this.TrackingPositions[posStr] = this.CurrTrackingPos;
+					this.LastTrackedScreenPos = Main.screenPosition;
 				}
 			}
 		}
